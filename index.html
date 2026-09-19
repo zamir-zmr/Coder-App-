@@ -31,6 +31,11 @@ header{display:flex;align-items:center;gap:2px;padding:4px 6px;padding-top:max(4
 .fi{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font:700 10px system-ui;flex:none;color:#fff}
 .fi.h{background:#e44d26}.fi.c{background:#2965f1}.fi.j{background:#f7df1e;color:#222}.fi.n{background:#7cb342}.fi.p{background:#3776ab}.fi.m{background:#78909c}.fi.t{background:#5c5c6b}
 #ew{position:relative;flex:1;min-height:0}
+.ace_marker-layer .ace_selection{background:rgba(66,133,214,.62)!important}
+.sh{position:absolute;z-index:7;width:26px;height:26px;background:#a8c7fa;border-radius:50%;touch-action:none;display:none;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.sh.s{border-top-right-radius:0}.sh.e{border-top-left-radius:0}
+.sh::after{content:"";position:absolute;inset:-14px}
+.ace_scroller,.ace_content,.ace_gutter{touch-action:none}
 #editor{position:absolute;inset:0;font-family:"JetBrains Mono",Menlo,Consolas,monospace}
 .prob{position:absolute;right:0;top:10px;z-index:6;display:flex;align-items:center;gap:5px;padding:6px 9px 6px 10px;border-radius:14px 0 0 14px;background:var(--sf);border:1px solid var(--bd);border-right:0;font-size:12px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35)}
 .prob.err{color:var(--er)}.prob.warn{color:var(--wa)}.prob.ok{color:var(--ok)}
@@ -134,6 +139,7 @@ header{display:flex;align-items:center;gap:2px;padding:4px 6px;padding-top:max(4
   <div id="ew">
     <div id="editor"></div>
     <div class="prob ok" id="prob"></div>
+    <div class="sh s" id="hS"></div><div class="sh e" id="hE"></div>
     <button class="jmp" id="jUp" aria-label="Scroll to top" style="bottom:124px"></button>
     <button class="jmp" id="jDn" aria-label="Scroll to bottom" style="bottom:72px"></button>
     <button id="fab" aria-label="More keys"></button>
@@ -241,7 +247,7 @@ const idx=`<!DOCTYPE html>
 </head>
 <body>
   <main class="card">
-    <h1>Hello, World 👋</h1>
+        <h1>Hello, World 👋</h1>
     <p>Edit the files and press ▶ to run.</p>
     <button id="btn">Click me</button>
   </main>
@@ -346,8 +352,9 @@ req('../lib/dom').importCssString(exports.cssText,exports.cssClass,false);
 });
 ace.config.set('basePath',CDN);
 try{ace.require('ace/ext/language_tools')}catch(e){}
-const editor=ace.edit('editor');editor.setOptions({showPrintMargin:false,fixedWidthGutter:true,highlightGutterLine:true,scrollPastEnd:.3,fontFamily:'JetBrains Mono, Menlo, Consolas, monospace'});try{editor.setOptions({enableBasicAutocompletion:true,enableSnippets:true,enableLiveAutocompletion:true})}catch(e){}
+const editor=ace.edit('editor');editor.setOptions({showPrintMargin:false,fixedWidthGutter:true,highlightGutterLine:true,scrollPastEnd:.5,fontFamily:'JetBrains Mono, Menlo, Consolas, monospace'});try{editor.setOptions({enableBasicAutocompletion:true,enableSnippets:true,enableLiveAutocompletion:true})}catch(e){}
 editor.$blockScrolling=Infinity;
+try{editor.renderer.setScrollMargin(12,12,0,140)}catch(e){}
 
 function sess(f){
 if(sessions[f.id])return sessions[f.id];
@@ -401,10 +408,11 @@ if(f.cur){try{editor.moveCursorToPosition(f.cur);editor.renderer.scrollCursorInt
 paint();updProblems();persist();if(focus)editor.focus();
 }
 function addFile(name,content,extra){
+name=uniqName(name,null);
 const f=Object.assign({id:uid(),name,content:content||'',mode:modeOf(name),enc:'UTF-8',eol:'lf',ro:false,pin:false,dirty:false,isNew:true,path:''},extra||{});
 S.files.push(f);openFile(f.id,true);return f;
 }
-function newFile(){promptBox('New file','index.html',n=>resolveName(n,null,x=>addFile(x,'')),'file name')}
+function newFile(){promptBox('New file','untitled.html',n=>resolveName(n,null,x=>addFile(x,'')),'file name')}
 function pushRecent(f){
 sync();S.recent=S.recent.filter(r=>r.name!==f.name);
 S.recent.unshift({name:f.name,content:f.content,mode:f.mode,ts:Date.now()});S.recent=S.recent.slice(0,12);
@@ -442,17 +450,15 @@ sync();
 if(f._h){try{const w=await f._h.createWritable();await w.write(enc(f.content,f.enc,f.name));await w.close()}catch(e){toast('Write failed: '+e.message);return}}
 f.dirty=false;f.isNew=false;if(!f.path)f.path='/workspace/'+f.name;saveNow();paint();toast('Saved '+f.name);
 }
-function resolveName(name,selfId,cb){
+function uniqName(name,selfId){
 const clash=n=>S.files.find(f=>f.id!==selfId&&f.name.toLowerCase()===n.toLowerCase());
-if(!clash(name)){cb(name);return}
-const w=document.createElement('div');
-w.innerHTML=`<p>A file named '<b>${esc(name)}</b>' already exists in this directory. Modify the name or overwrite.</p><input class="inp" autocapitalize="off" spellcheck="false">`;
-const i=$('input',w);i.value=name;
-const go=()=>{const v=i.value.trim();if(!v)return false;const c=clash(v);if(c)removeFile(c.id,false);cb(v)};
-const m=modal('File already exists',w,[{t:'Cancel'},{t:'Overwrite / Save',c:'p',fn:go}]);
-i.addEventListener('keydown',e=>{if(e.key==='Enter'&&go()!==false)m.close()});
-setTimeout(()=>{i.focus();i.select()},60);
+if(!clash(name))return name;
+const d=name.lastIndexOf('.');const base=d>0?name.slice(0,d):name,ext=d>0?name.slice(d):'';
+const b2=base.replace(/ \(\d+\)$/,'');
+let n=1;while(clash(b2+' ('+n+')'+ext))n++;
+return b2+' ('+n+')'+ext;
 }
+function resolveName(name,selfId,cb){cb(uniqName(name,selfId))}
 function saveAs(){
 const f=cur();sync();
 promptBox('Save as',f.name,n0=>resolveName(n0,f.id,n=>{
@@ -783,24 +789,96 @@ if(K.shift&&ev.key&&ev.key.startsWith('Arrow')&&!ev.shiftKey){ev.preventDefault(
 },true);
 editor.textInput.getElement().addEventListener('beforeinput',ev=>{if(K.ctrl&&ev.data&&ev.data.length===1&&ctrlKey(ev.data))ev.preventDefault()},true);
 (function(){
-const box=editor.container;let dn=null,last=0;
-const skip=t=>t.closest&&t.closest('.ace_scrollbar,.ace_search,.ace_autocomplete');
+const box=editor.container;let last=0,T=null,raf=0;
+const skip=t=>t.closest&&t.closest('.ace_scrollbar,.ace_search,.ace_autocomplete,.ace_fold-widget,.ace_tooltip');
 function tap(x,y){
-if(Date.now()-last<350)return;last=Date.now();
+if(Date.now()-last<250)return;last=Date.now();
 const p=editor.renderer.screenToTextCoordinates(x,y);
-const put=()=>{if(!shA){editor.selection.clearSelection();editor.moveCursorToPosition(p)}else{editor.selection.setSelectionAnchor(shA.row,shA.column);editor.selection.selectToPosition(p)}};
-if(!shA){shA={row:p.row,column:p.column};put();toast('Start set — tap end point')}
-else{put();setTimeout(put,50);setTimeout(put,250);toast('Selected — Copy / Cut ready')}
+if(!shA)shA={row:p.row,column:p.column};
+const put=()=>{editor.selection.setSelectionAnchor(shA.row,shA.column);editor.selection.selectToPosition(p)};
+put();setTimeout(put,60);setTimeout(put,300);
+toast('Selected — drag handles / Copy / Cut');
 }
+function stop(ev){ev.stopPropagation()}
+box.addEventListener('touchstart',ev=>{
+if(skip(ev.target)||ev.touches.length>1){T=null;return}
+stop(ev);cancelAnimationFrame(raf);
+const t=ev.touches[0];
+T={x:t.clientX,y:t.clientY,lx:t.clientX,ly:t.clientY,t0:Date.now(),lt:Date.now(),moved:false,vx:0,vy:0,lp:false};
+T.timer=setTimeout(()=>{if(!T||T.moved||K.shift)return;T.lp=true;const p=editor.renderer.screenToTextCoordinates(T.x,T.y);editor.moveCursorToPosition(p);editor.selection.selectWord();editor.focus()},450);
+},{capture:true,passive:true});
+box.addEventListener('touchmove',ev=>{
+if(!T)return;stop(ev);
+const t=ev.touches[0];
+if(!T.moved&&Math.hypot(t.clientX-T.x,t.clientY-T.y)>8){T.moved=true;clearTimeout(T.timer)}
+if(T.moved){
+if(ev.cancelable)ev.preventDefault();
+const now=Date.now(),dt=Math.max(1,now-T.lt),dx=t.clientX-T.lx,dy=t.clientY-T.ly;
+editor.renderer.scrollBy(-dx,-dy);
+T.vx=-dx/dt*.6+T.vx*.4;T.vy=-dy/dt*.6+T.vy*.4;
+T.lx=t.clientX;T.ly=t.clientY;T.lt=now;
+}
+},{capture:true,passive:false});
+box.addEventListener('touchend',ev=>{
+if(!T)return;stop(ev);
+if(ev.cancelable)ev.preventDefault();
+clearTimeout(T.timer);const c=T;T=null;
+if(c.moved){
+if(Date.now()-c.lt>80)return;
+let vx=c.vx*16,vy=c.vy*16;
+const step=()=>{vx*=.95;vy*=.95;if(Math.abs(vx)<.4&&Math.abs(vy)<.4)return;editor.renderer.scrollBy(vx,vy);raf=requestAnimationFrame(step)};
+raf=requestAnimationFrame(step);return;
+}
+if(c.lp)return;
+if(K.shift)tap(c.x,c.y);
+else{const p=editor.renderer.screenToTextCoordinates(c.x,c.y);editor.selection.clearSelection();editor.moveCursorToPosition(p);editor.focus()}
+},{capture:true,passive:false});
+box.addEventListener('touchcancel',()=>{if(T){clearTimeout(T.timer);T=null}},true);
 box.addEventListener('mousedown',ev=>{if(K.shift&&!skip(ev.target)){ev.preventDefault();ev.stopPropagation()}},true);
-box.addEventListener('pointerdown',ev=>{dn={x:ev.clientX,y:ev.clientY,t:Date.now()}},true);
-box.addEventListener('pointerup',ev=>{if(!K.shift||!dn||skip(ev.target))return;const d=Math.hypot(ev.clientX-dn.x,ev.clientY-dn.y);if(d<10&&Date.now()-dn.t<600)tap(ev.clientX,ev.clientY);dn=null},true);
 box.addEventListener('click',ev=>{if(!K.shift||skip(ev.target))return;ev.preventDefault();ev.stopPropagation();tap(ev.clientX,ev.clientY)},true);
 })();
 editor.commands.addCommand({name:'saveFile',bindKey:{win:'Ctrl-S',mac:'Command-S'},exec:()=>saveFile(cur())});
 editor.commands.addCommand({name:'runCode',bindKey:{win:'Ctrl-Enter',mac:'Command-Enter'},exec:run});
 editor.commands.addCommand({name:'findFile',bindKey:{win:'Ctrl-P',mac:'Command-P'},exec:findFile});
 editor.commands.addCommand({name:'gotoLineX',bindKey:{win:'Ctrl-L',mac:'Command-L'},exec:gotoLine});
+
+/* ---------- selection handles ---------- */
+(function(){
+const ew=document.getElementById('ew'),hS=document.getElementById('hS'),hE=document.getElementById('hE');
+let drag=null;
+function place(h,pos){
+const r=editor.renderer,c=r.textToScreenCoordinates(pos.row,pos.column),b=ew.getBoundingClientRect();
+const x=c.pageX-b.left-window.pageXOffset,y=c.pageY-b.top-window.pageYOffset+r.lineHeight;
+const gx=r.gutterWidth||0;
+if(x<gx-1||x>b.width||y<0||y>b.height+r.lineHeight){h.style.display='none';return}
+h.style.display='block';
+h.style.left=(h.classList.contains('s')?x-26:x)+'px';
+h.style.top=(y-2)+'px';
+}
+function upd(){
+if(editor.selection.isEmpty()){hS.style.display=hE.style.display='none';return}
+const rg=editor.selection.getRange();place(hS,rg.start);place(hE,rg.end);
+}
+editor.renderer.on('afterRender',upd);
+editor.selection.on('changeSelection',upd);editor.on('changeSession',()=>{editor.selection.on('changeSelection',upd);upd()});
+[hS,hE].forEach(h=>{
+h.addEventListener('pointerdown',e=>{
+e.preventDefault();e.stopPropagation();
+const rg=editor.selection.getRange();
+drag={fixed:h===hS?{row:rg.end.row,column:rg.end.column}:{row:rg.start.row,column:rg.start.column}};
+h.setPointerCapture(e.pointerId);
+});
+h.addEventListener('pointermove',e=>{
+if(!drag)return;e.preventDefault();
+const r=editor.renderer,b=ew.getBoundingClientRect();
+if(e.clientY<b.top+40)editor.renderer.scrollBy(0,-20);else if(e.clientY>b.bottom-60)editor.renderer.scrollBy(0,20);
+const p=r.screenToTextCoordinates(e.clientX,e.clientY-r.lineHeight*1.2);
+editor.selection.setSelectionAnchor(drag.fixed.row,drag.fixed.column);editor.selection.selectToPosition(p);
+});
+const end=()=>{drag=null};
+h.addEventListener('pointerup',end);h.addEventListener('pointercancel',end);
+});
+})();
 
 /* ---------- icons + boot ---------- */
 $('#bMenu').innerHTML=ic('menu');$('#bEdit').innerHTML=ic('pencil');$('#bRun').innerHTML=ic('play');$('#bMore').innerHTML=ic('dots');
